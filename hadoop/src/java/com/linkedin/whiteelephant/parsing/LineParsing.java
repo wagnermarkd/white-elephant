@@ -30,7 +30,7 @@ import com.linkedin.whiteelephant.parsing.TaskType;
 
 public class LineParsing
 {
-  public enum AttemptParameter 
+  public enum AttemptParameter
   {
     TASKID,
     TASK_ATTEMPT_ID,
@@ -38,37 +38,39 @@ public class LineParsing
     START_TIME,
     FINISH_TIME,
     SHUFFLE_FINISHED,
-    SORT_FINISHED
+    SORT_FINISHED,
+    TRACKER_NAME,
+    LOCALITY
   }
-  
+
   private static String quotedTextPattern = "\"([^\"]+)\"";
-  private static Pattern jobLinePattern = Pattern.compile(String.format("^Job JOBID=%s.*",quotedTextPattern));    
-  private static Pattern jobPattern = Pattern.compile("job_\\d+_\\d+");    
-  private static Pattern parameterPattern = Pattern.compile("([A-Z_]+)=" + quotedTextPattern); 
-  private static Pattern counterPattern = Pattern.compile("\\[\\(([A-Z_]+)\\)\\(.+?\\)\\((\\d+)\\)\\]");  
-  private static Pattern taskPattern = Pattern.compile("task_(\\d+_\\d+)_[mr]_\\d+");    
+  private static Pattern jobLinePattern = Pattern.compile(String.format("^Job JOBID=%s.*",quotedTextPattern));
+  private static Pattern jobPattern = Pattern.compile("job_\\d+_\\d+");
+  private static Pattern parameterPattern = Pattern.compile("([A-Z_]+)=" + quotedTextPattern);
+  private static Pattern counterPattern = Pattern.compile("\\[\\(([A-Z_]+)\\)\\(.+?\\)\\((\\d+)\\)\\]");
+  private static Pattern taskPattern = Pattern.compile("task_(\\d+_\\d+)_[mr]_\\d+");
   private static Pattern taskLinePattern = Pattern.compile(String.format("Task TASKID=%s TASK_TYPE=\"(MAP|REDUCE)\".+",quotedTextPattern));
   private static Pattern attemptLinePattern = Pattern.compile("^(Map|Reduce)Attempt TASK_TYPE=\"(MAP|REDUCE)\".+");
-  
+
   public static Job tryParseJob(String line)
   {
     // these mess with our pattern matching
     line = line.replace("\\\"", "");
-    
+
     Job job = null;
-    
+
     Matcher m = jobLinePattern.matcher(line);
     if (m.matches())
     {
       job = new Job();
-      
+
       job.setJobId(m.group(1));
-      
+
       Matcher paramMatcher = parameterPattern.matcher(line);
       while (paramMatcher.find())
       {
         String name = paramMatcher.group(1);
-        String value = paramMatcher.group(2);                
+        String value = paramMatcher.group(2);
         maybeSetJobParam(job, name, value);
       }
     }
@@ -78,24 +80,24 @@ public class LineParsing
       if (jobMatcher.find())
       {
         String jobId = jobMatcher.group();
-        
+
         job = new Job();
-        
+
         job.setJobId(jobId);
-        
+
         Matcher paramMatcher = parameterPattern.matcher(line);
         while (paramMatcher.find())
         {
           String name = paramMatcher.group(1);
-          String value = paramMatcher.group(2);                
+          String value = paramMatcher.group(2);
           maybeSetJobParam(job, name, value);
         }
       }
     }
-    
+
     return job;
   }
-  
+
   private static void maybeSetJobParam(Job job, String name, String value)
   {
     if (name.equals("USER"))
@@ -154,48 +156,48 @@ public class LineParsing
       job.setFailedReduces(Integer.parseInt(value));
     }
   }
-  
+
   public static Attempt tryParseAttempt(String line)
   {
     // these mess with our pattern matching
     line = line.replace("\\\"", "");
-    
+
     Attempt attempt = null;
-    
+
     Matcher m = attemptLinePattern.matcher(line);
-    
+
     if (m.matches())
     {
       attempt = new Attempt();
-            
+
       attempt.setCounters(new HashMap<CharSequence,Long>());
-      
+
       attempt.setDerived(new DerivedAttemptData());
-      
+
       attempt.setType(TaskType.valueOf(m.group(1).toUpperCase()));
-      
+
       Matcher matcher = parameterPattern.matcher(line);
-      
+
       while (matcher.find())
       {
         String name = matcher.group(1);
         String value = matcher.group(2);
         maybeSetAttemptParam(attempt,name,value);
       }
-      
+
       matcher = counterPattern.matcher(line);
-      
+
       while (matcher.find())
       {
         String name = matcher.group(1);
         String value = matcher.group(2);
-        setAttemptCounter(attempt,name,Long.parseLong(value));        
+        setAttemptCounter(attempt,name,Long.parseLong(value));
       }
-      
+
       if (attempt.getTaskId() != null)
       {
         Matcher taskMatcher = taskPattern.matcher(attempt.getTaskId());
-        
+
         if (taskMatcher.matches())
         {
           String jobId = String.format("job_%s",taskMatcher.group(1));
@@ -214,16 +216,16 @@ public class LineParsing
         attempt = null;
       }
     }
-    
+
     return attempt;
   }
-  
+
   private static void maybeSetAttemptParam(Attempt attempt, String name, String value)
-  {    
+  {
     try
     {
       AttemptParameter param = AttemptParameter.valueOf(name);
-      
+
       if (param.equals(AttemptParameter.TASKID))
       {
         attempt.setTaskId(value);
@@ -233,7 +235,7 @@ public class LineParsing
         attempt.setTaskAttemptId(value);
       }
       else if (param.equals(AttemptParameter.TASK_STATUS))
-      {    
+      {
         attempt.setTaskStatus(TaskStatus.valueOf(value));
       }
       else if (param.equals(AttemptParameter.START_TIME))
@@ -252,46 +254,59 @@ public class LineParsing
       {
         attempt.setSortFinished(Long.parseLong(value));
       }
+      else if (param.equals(AttemptParameter.LOCALITY))
+      {
+        attempt.setLocality(value);
+        if (!printed){
+          printed = true;
+          System.out.println(value);
+        }
+      }
+      else if (param.equals(AttemptParameter.TRACKER_NAME))
+      {
+        attempt.setTrackerName(value);
+      }
     }
     catch (IllegalArgumentException e)
     {
       // ignore these, it means the enum isn't one we care about
     }
   }
-  
+
+  static boolean printed = false;
   private static void setAttemptCounter(Attempt attempt, String name, Long value)
   {
     attempt.getCounters().put(name, value);
   }
-   
+
   public static Task tryParseTask(String line)
   {
     // these mess with our pattern matching
     line = line.replace("\\\"", "");
-    
+
     Task task = null;
-    
+
     Matcher m = taskLinePattern.matcher(line);
-    
+
     if (m.matches())
     {
       task = new Task();
-      
+
       task.setType(TaskType.valueOf(m.group(2).toUpperCase()));
-      
+
       Matcher matcher = parameterPattern.matcher(line);
-      
+
       while (matcher.find())
       {
         String name = matcher.group(1);
         String value = matcher.group(2);
         maybeSetTaskParam(task,name,value);
       }
-      
+
       if (task.getTaskId() != null)
       {
         Matcher taskMatcher = taskPattern.matcher(task.getTaskId());
-        
+
         if (taskMatcher.matches())
         {
           String jobId = String.format("job_%s",taskMatcher.group(1));
@@ -310,12 +325,12 @@ public class LineParsing
         task = null;
       }
     }
-    
+
     return task;
   }
-  
+
   private static void maybeSetTaskParam(Task attempt, String name, String value)
-  {    
+  {
     if (name.equals("TASKID"))
     {
       attempt.setTaskId(value);

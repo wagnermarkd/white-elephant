@@ -63,6 +63,9 @@
               "values":"long"
             }
            },
+           
+           {"name":"trackerName", "type":["string","null"]},
+           {"name":"locality", "type":["string","null"]},
 
            {"name":"derived","type":
             {
