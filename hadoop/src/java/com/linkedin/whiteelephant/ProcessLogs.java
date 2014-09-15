@@ -28,6 +28,7 @@ import org.apache.log4j.Logger;
 
 import com.linkedin.whiteelephant.analysis.ComputeUsagePerHour;
 import com.linkedin.whiteelephant.mapreduce.lib.job.StagedOutputJobExecutor;
+import com.linkedin.whiteelephant.parsing.ParseAuditLog;
 import com.linkedin.whiteelephant.parsing.ParseJobConfs;
 import com.linkedin.whiteelephant.parsing.ParseJobsFromLogs;
 
@@ -35,35 +36,38 @@ public class ProcessLogs implements Runnable
 {
   private final Logger _log;
   private final Properties _props;
-  private double _progress;  
-  
+  private double _progress;
+
   private final int _jobConcurrency;
   private final StagedOutputJobExecutor _executor;
-  
+
   private final ParseJobsFromLogs parseJobs;
   private final ComputeUsagePerHour usagePerHour;
   private final ParseJobConfs parseJobConfs;
-  
+  private final ParseAuditLog parseAuditLog;
+
   public ProcessLogs(String name, Properties props) throws IOException {
     _log = Logger.getLogger(name);
-    _props = props;    
-    
+    _props = props;
+
     if (_props.get("job.concurrency") == null) {
       throw new IllegalArgumentException("job.concurrency is not specified.");
     }
-    
-    // set log level for these classes to error to suppress spewing warnings about splits 
+
+    // set log level for these classes to error to suppress spewing warnings about splits
     org.apache.log4j.Logger.getLogger("org.apache.hadoop.mapreduce.split.JobSplitWriter").setLevel(Level.ERROR);
     org.apache.log4j.Logger.getLogger("org.apache.hadoop.mapreduce.split.SplitMetaInfoReader").setLevel(Level.ERROR);
 
     _jobConcurrency = Integer.parseInt((String)_props.get("job.concurrency"));
     _executor = new StagedOutputJobExecutor(_jobConcurrency);
-    
+
     parseJobs = new ParseJobsFromLogs(name, props);
     usagePerHour = new ComputeUsagePerHour(name, props);
     parseJobConfs = new ParseJobConfs(name, props);
+    parseAuditLog = new ParseAuditLog(name, props);
   }
-  
+
+  @Override
   public void run()
   {
     _log.info(String.format("Starting %s", getClass().getSimpleName()));
@@ -71,13 +75,14 @@ public class ProcessLogs implements Runnable
     try
     {
       System.out.println("Parsing logs");
-      
-      parseJobConfs.execute(_executor);
-      parseJobs.execute(_executor);
-      usagePerHour.execute(_executor);
-      
+
+      //parseJobConfs.execute(_executor);
+      //parseJobs.execute(_executor);
+      //usagePerHour.execute(_executor);
+      parseAuditLog.execute(_executor);
+
       _executor.waitForCompletionThenShutdown();
-      
+
       System.out.println("All tasks have completed!");
     }
     catch (IOException e)
@@ -92,27 +97,27 @@ public class ProcessLogs implements Runnable
     {
       e.printStackTrace();
     }
-  } 
-        
+  }
+
   public double getProgress()
   {
     return _progress;
   }
-  
+
   public void cancel()
-  {    
+  {
     _executor.shutdownNow();
   }
-  
+
   private static void loadProperties(Properties props, String fileName) throws IOException
   {
     FileInputStream propStream = new FileInputStream(fileName);
     props.load(propStream);
     propStream.close();
   }
-  
+
   public static void main(String[] args) throws IOException
-  {    
+  {
     if (args.length == 0)
     {
       System.out.println("The job file name is required");
@@ -123,10 +128,10 @@ public class ProcessLogs implements Runnable
       System.out.println("Too many arguments.  Only the job file name is required");
       System.exit(1);
     }
-    
+
     String jobName = args[0];
     File jobFile = new File(jobName);
-    
+
     File[] propFiles = new File(".").listFiles(new FilenameFilter() {
       @Override
       public boolean accept(File dir, String name)
@@ -134,15 +139,15 @@ public class ProcessLogs implements Runnable
         return name.endsWith(".properties");
       }
     });
-    
+
     Properties props = new Properties();
-    
+
     for (File propFile : propFiles)
     {
       System.out.println("Loading configuration from " + propFile.getAbsolutePath());
       loadProperties(props,propFile.getAbsolutePath());
     }
-    
+
     if (jobFile.exists())
     {
       System.out.println("Loading configuration from " + jobFile.getAbsolutePath());
@@ -152,8 +157,8 @@ public class ProcessLogs implements Runnable
     {
       System.out.println("File " + jobName + " not found");
       System.exit(1);
-    }    
-    
+    }
+
     new ProcessLogs(jobName,props).run();
   }
 }

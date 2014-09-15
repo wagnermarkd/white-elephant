@@ -1,0 +1,54 @@
+/*
+ * Copyright 2012 LinkedIn, Inc
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License. You may obtain a copy of
+ * the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ */
+
+{
+  "type":"record",
+  "name":"AuditLogData",
+  "namespace": "com.linkedin.whiteelephant.parsing",
+  "fields": [
+    {"name":"cluster","type":[
+      "null",
+      "string"
+    ]},
+    {"name":"entry","type":
+      {"type":"record",
+       "name":"AuditEntry",
+       "namespace": "com.linkedin.whiteelephant.parsing",
+       "fields": [
+         {"name":"time","type":"long"},
+         {"name":"ugi","type":["string","null"]},
+         {"name":"ip","type":["string","null"]},
+         {"name":"cmd","type":{
+           "type":"enum","name":"FileCommand","namespace":"com.linkedin.whiteelephant.parsing",
+           "symbols":["GETFILEINFO","LISTSTATUS","OPEN","CREATE","RENAME","DELETE","MKDIRS","APPEND","CONCAT","FSCK","SETOWNER","SETPERMISSION","SETREPLICATION","SETTIMES"]
+         }},       
+         {"name":"src","type":["string","null"]},
+         {"name":"dst","type":["string","null"]},
+         {"name":"perm","type":[{
+         	"type":"record",
+         	"name":"Permission",
+         	"namespace":"com.linkedin.whiteelephant.parsing",
+         	"fields": [
+         	  {"name":"owner","type":"string"},
+         	  {"name":"group","type":"string"},
+         	  {"name":"permission","type":"string"}
+         	]}, "null"]
+         }
+       ] 
+      }
+    }
+  ]
+}

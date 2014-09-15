@@ -59,42 +59,42 @@ public class ParseJobConfs
   private final Properties _props;
   private final FileSystem _fs;
   private final String _name;
-  
+
   private final String _confsOutputPathRoot;
   private final String _logsRoot;
   private final String _clusterNames;
   private final int _numDays;
   private final int _numDaysForced;
   private final boolean _incremental;
-  
+
   public ParseJobConfs(String name, Properties props) throws IOException
   {
     _log = Logger.getLogger(name);
     _name = name;
-    _props = props;    
-    
+    _props = props;
+
     Configuration conf = StagedOutputJob.createConfigurationFromProps(_props);
-    
+
     System.out.println("fs.default.name: " + conf.get("fs.default.name"));
-    
+
     _fs = FileSystem.get(conf);
-    
+
     if (_props.get("cluster.names") == null) {
       throw new IllegalArgumentException("cluster.names is not specified.");
     }
-    
+
     if (_props.get("jobs.output.path") == null) {
-       throw new IllegalArgumentException("attempts.output.path is not specified.");
+      throw new IllegalArgumentException("attempts.output.path is not specified.");
     }
-    
+
     if (_props.get("num.days") == null) {
       throw new IllegalArgumentException("num.days is not specified");
     }
-    
+
     if (_props.get("num.days.forced") == null) {
       throw new IllegalArgumentException("num.days.forced is not specified");
     }
-    
+
     if (_props.get("incremental") == null) {
       throw new IllegalArgumentException("incremental is not specified.");
     }
@@ -110,58 +110,56 @@ public class ParseJobConfs
     _numDaysForced = Integer.parseInt((String)_props.get("num.days.forced"));
     _incremental = Boolean.parseBoolean((String)_props.get("incremental"));
   }
-  
+
   public void execute(StagedOutputJobExecutor executor) throws IOException, InterruptedException, ExecutionException
   {
     for (String clusterName : _clusterNames.split(","))
     {
       System.out.println("Processing cluster " + clusterName);
-            
+
       List<JobStatsProcessing.ProcessingTask> processingTasks = JobStatsProcessing.getTasks(_fs, _logsRoot, clusterName, _confsOutputPathRoot, "xml", _incremental, _numDays, _numDaysForced);
-      
+
       for (JobStatsProcessing.ProcessingTask task : processingTasks)
-      {      
+      {
         List<String> inputPaths = new ArrayList<String>();
         inputPaths.add(task.inputPathFormat);
-        
+
         String outputPath = task.outputPath;
-        
+
         final StagedOutputJob job = StagedOutputJob.createStagedJob(
-           _props,
-           _name + "-parse-confs-" + task.id,
-           inputPaths,
-           "/tmp" + outputPath,
-           outputPath,
-           _log);
-        
+            _props,
+            _name + "-parse-confs-" + task.id,
+            inputPaths,
+            "/tmp" + outputPath,
+            outputPath,
+            _log);
+
         job.getConfiguration().set("jobs.output.path", _confsOutputPathRoot);
         job.getConfiguration().set("logs.cluster.name", clusterName);
-                
-        job.setOutputKeyClass(BytesWritable.class);
-        job.setOutputValueClass(NullWritable.class);
-  
+
         job.setInputFormatClass(CombineDocumentFileFormat.class);
         job.setOutputFormatClass(AvroKeyOutputFormat.class);
-  
+
         AvroJob.setOutputKeySchema(job, JobConf.SCHEMA$);
-        
+        AvroJob.setMapOutputKeySchema(job, JobConf.SCHEMA$);
+
         job.setNumReduceTasks(0);
-   
+
         job.setMapperClass(ParseJobConfs.TheMapper.class);
-        
+
         executor.submit(job);
       }
-      
+
       executor.waitForCompletion();
     }
   }
-  
-  public static class TheMapper extends Mapper<Text, BytesWritable, AvroWrapper<JobConf>, NullWritable> 
+
+  public static class TheMapper extends Mapper<Text, BytesWritable, AvroWrapper<JobConf>, NullWritable>
   {
 
     private Logger _log = Logger.getLogger(TheMapper.class);
     private static Pattern jobPattern = Pattern.compile("job_\\d+_\\d+");
-      
+
     String _clusterName;
 
     private DocumentBuilder builder;
@@ -171,21 +169,21 @@ public class ParseJobConfs
     {
       _clusterName = context.getConfiguration().get("logs.cluster.name");
       try {
-         builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+        builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
       } catch (ParserConfigurationException e) {
         throw new RuntimeException(e);
       }
     }
-    
+
     @Override
-    protected void map(Text key, BytesWritable value, Context context) throws IOException, InterruptedException 
+    protected void map(Text key, BytesWritable value, Context context) throws IOException, InterruptedException
     {
       JobConf jobConf = new JobConf();
       String filename = key.toString();
       jobConf.setPath(filename);
-        
+
       Matcher jobMatcher = jobPattern.matcher(filename);
-       
+
       if (!jobMatcher.find()){
         throw new RuntimeException("Expected to find jobId in the filename. Aborting");
       }
@@ -193,11 +191,11 @@ public class ParseJobConfs
       String jobId = jobMatcher.group();
       jobConf.setJobId(jobId);
       jobConf.setCluster(_clusterName);
-        
-      Map<CharSequence, CharSequence> conf = getConfigurationMap(value); 
-        
+
+      Map<CharSequence, CharSequence> conf = getConfigurationMap(value);
+
       jobConf.setConfiguration(conf);
-        
+
       context.write(new AvroKey<JobConf>(jobConf), NullWritable.get());
     }
 
